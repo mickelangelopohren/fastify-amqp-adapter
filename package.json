@@ -1,0 +1,24 @@
+{
+  "name": "fastify-amqp-connection-manager",
+  "version": "1.0.0",
+  "description": "Wrapper for amqp-connetion-manager lib",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mickelangelopohren/fastify-amqp-connection-manager.git"
+  },
+  "author": "Mickelangelo Pohren",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/mickelangelopohren/fastify-amqp-connection-manager/issues"
+  },
+  "homepage": "https://github.com/mickelangelopohren/fastify-amqp-connection-manager#readme",
+  "dependencies": {
+    "amqp-connection-manager": "^3.2.0",
+    "amqplib": "^0.6.0",
+    "fastify-plugin": "^2.3.2"
+  }
+}
