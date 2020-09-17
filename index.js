@@ -7,21 +7,29 @@ function fastifyAmqpConnectionManager (fastify, opts, next) {
     port = 5672,
     user = 'guest',
     pass = 'guest',
-    queueName = 'test',
-    memoryMsgPoolSize = '10',
+    defaultQueueName = 'test',
   } = opts;
+
+  let channel;
 
   const amqpBaseUrl = `amqp://${user}:${pass}@${host}:${port}`;
 
   const connection = amqpcm.connect([amqpBaseUrl]);
-
-  // TODO queue receive options by parameters
-  const channelWrapper = connection.createChannel({
-    // json: true,
-    setup: function(channel) {
-      return channel.assertQueue(queueName, { durable: true });
-    }
+  connection.on('connect', () => {
+    return console.log(`AMQP server '${host}' connected`)
   });
+  connection.on('disconnect', (err) => {
+    return console.log(`AMQP server '${host}' disconnected`, err.err)
+  });
+
+  const channelWrapper = (queueName) => {
+    return connection.createChannel({
+      // json: true,
+      setup: (channel) => {
+        return channel.assertQueue(queueName, { durable: true });
+      }
+    })
+  };
 
   const getBuffer = (message) => {
     switch (typeof message) {
@@ -34,28 +42,55 @@ function fastifyAmqpConnectionManager (fastify, opts, next) {
     }
   }
 
-  // TODO receive queue options by parameters
-  const sendToQueue = (message) => {
-    if (channelWrapper.queueLength() >= memoryMsgPoolSize) {
-      // Trick to clear unsended messages stored in memory because
-      // amqp-connection-manager actualy has no way to clear stored messages
-      channelWrapper._messages = [];
-      channelWrapper.close();
+  const sendToQueue = (message, queue = null) => {
+    if (!connection.isConnected()) {
+      return console.log('AMQP server disconected -> Message not sent');
+    }
+
+    const queueName = queue || defaultQueueName;
+
+    if (!channel) {
+      channel =  channelWrapper(queueName);
     }
 
     const bufferedMsg = getBuffer(message);
 
-    // TODO Adjust logs
-    return channelWrapper.sendToQueue(queueName, bufferedMsg, { persistent: true })
-      .then(function() {
-        return console.log("Message was sent ");
-      }).catch(function(err) {
-        return console.log("Message was rejected");
+    return channel.sendToQueue(queueName, bufferedMsg, { persistent: true })
+      .then(() =>  {
+        console.log('Message was sent');
+      }).catch((err) => {
+        channel.close();
+        connection.close();
+        console.log('Message was rejected');
       });
   }
 
-  fastify.decorate('amqpChannelWrapper', channelWrapper)
+  const consumeQueue = (onMessageCB, queue = null) => {
+    const queueName = queue || defaultQueueName;
+
+    const subscriberChannelWrapper = connection.createChannel({
+      setup: (channel) =>  {
+        return Promise.all([
+          channel.assertQueue(queueName, { durable: true }),
+          channel.prefetch(1),
+          channel.consume(queueName, onMessage)
+        ]);
+      }
+    });
+
+    async function onMessage(data) {
+      return onMessageCB(data)
+        .then(() => {
+          subscriberChannelWrapper.ack(data);
+        })
+        .catch((err) =>  {
+          console.error(err)
+        });
+    }
+  }
+
   fastify.decorate('amqpSendToQueue', sendToQueue)
+  fastify.decorate('amqpConsumeQueue', consumeQueue)
 
   next()
 }
